@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Rick - Color Palette Pixel Grid Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Bungee+Shade&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Pixel Rick</h1>
+            <p>Upload a PNG, JPG, or JPEG image to view its color palette pixel grid</p>
+        </header>
+        
+        <div class="controls">
+            <div class="file-controls">
+                <input type="file" id="fileInput" accept=".png,.jpg,.jpeg" />
+                <input type="file" id="projectInput" accept=".pxlrck" style="display: none;" />
+                <button id="loadProjectButton">Load Project</button>
+                <button id="saveProjectButton" disabled>Save Project</button>
+                <button id="exportGridButton" disabled>Export Grid</button>
+            </div>
+            <div class="scaling-controls">
+                <label>Scale to:</label>
+                <button class="scale-preset" data-size="32">32px</button>
+                <button class="scale-preset" data-size="64">64px</button>
+                <button class="scale-preset" data-size="128">128px</button>
+                <button class="scale-preset" data-size="256">256px</button>
+                <input type="number" id="customScale" min="8" max="1024" value="128" />
+                <button id="scaleButton">Scale</button>
+            </div>
+            <div class="zoom-controls">
+                <label for="zoomSlider">Zoom:</label>
+                <input type="range" id="zoomSlider" min="1" max="50" value="5" />
+                <span id="zoomValue">5x</span>
+                <label for="showGridLines" style="margin-left: 15px;">
+                    <input type="checkbox" id="showGridLines" checked>
+                    Grid Lines
+                </label>
+            </div>
+        </div>
+        
+        <div id="modeIndicator" class="mode-indicator" style="display: none;">
+            <div class="mode-content">
+                <span id="modeText">Viewing saved grid exactly as processed</span>
+                <button id="editProjectButton">Edit Project</button>
+                <button id="viewExactButton" style="display: none;">View Exact Grid</button>
+            </div>
+        </div>
+        
+        <div class="palette-tooltip" id="topPalette"></div>
+        
+        <div class="canvas-container">
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div id="tooltip" class="tooltip"></div>
+        
+        <div class="palette-tooltip" id="bottomPalette"></div>
+        
+        <div class="advanced-settings">
+            <div class="settings-header" id="settingsToggle">
+                <h3>Advanced Settings <span class="toggle-icon">▼</span></h3>
+            </div>
+            <div class="settings-content" id="settingsContent">
+                
+                <div class="setting-section">
+                    <h4>Color Weighting</h4>
+                    <div class="setting-row">
+                        <label>Red Sensitivity:</label>
+                        <input type="range" id="redWeight" min="0.1" max="0.8" step="0.05" value="0.3">
+                        <span id="redValue">0.30</span>
+                    </div>
+                    <div class="setting-row">
+                        <label>Green Sensitivity:</label>
+                        <input type="range" id="greenWeight" min="0.1" max="0.8" step="0.05" value="0.59">
+                        <span id="greenValue">0.59</span>
+                    </div>
+                    <div class="setting-row">
+                        <label>Blue Sensitivity:</label>
+                        <input type="range" id="blueWeight" min="0.1" max="0.8" step="0.05" value="0.11">
+                        <span id="blueValue">0.11</span>
+                    </div>
+                    <div class="preset-buttons">
+                        <button class="preset-btn" data-preset="human">Human Eye</button>
+                        <button class="preset-btn" data-preset="balanced">Balanced</button>
+                        <button class="preset-btn" data-preset="green">Green Focus</button>
+                    </div>
+                </div>
+                
+                <div class="setting-section">
+                    <h4>Image Adjustments</h4>
+                    <div class="setting-row">
+                        <label>Brightness:</label>
+                        <input type="range" id="brightnessSlider" min="-50" max="50" step="1" value="0">
+                        <span id="brightnessValue">0</span>
+                    </div>
+                    <div class="setting-row">
+                        <label>Contrast:</label>
+                        <input type="range" id="contrastSlider" min="0.5" max="2.0" step="0.1" value="1.0">
+                        <span id="contrastValue">1.0</span>
+                    </div>
+                    <div class="preset-buttons">
+                        <button class="preset-btn" data-adjustment="reset">Reset</button>
+                        <button class="preset-btn" data-adjustment="bright">Brighten</button>
+                        <button class="preset-btn" data-adjustment="high-contrast">High Contrast</button>
+                    </div>
+                </div>
+                
+                <div class="setting-section">
+                    <h4>Edge Detection</h4>
+                    <div class="setting-row">
+                        <label>Isolated Pixel Cleanup:</label>
+                        <input type="checkbox" id="cleanupIsolated">
+                        <span>Remove noise pixels</span>
+                    </div>
+                    <div class="setting-row">
+                        <label>Edge Enhancement:</label>
+                        <input type="range" id="edgeStrength" min="-1.0" max="1.0" step="0.1" value="0">
+                        <span id="edgeValue">0.0</span>
+                    </div>
+                    <div class="preset-buttons">
+                        <button class="preset-btn" data-edge="none">No Processing</button>
+                        <button class="preset-btn" data-edge="cleanup">Cleanup Only</button>
+                        <button class="preset-btn" data-edge="enhance">Enhance Edges</button>
+                        <button class="preset-btn" data-edge="smooth">Smooth Edges</button>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+        <div class="info">
+            <div id="imageInfo" class="image-info"></div>
+            <div class="color-legend">
+                <h3>Color Palette (29 Colors)</h3>
+                <div class="legend-grid">
+                    <div class="legend-item"><div class="color-box" style="background: rgb(0,0,0)"></div><span>Black</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(68,68,68)"></div><span>Dark Gray</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(136,136,136)"></div><span>Gray</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(187,187,187)"></div><span>Light Gray</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,255,255)"></div><span>White</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(136,0,21)"></div><span>Dark Red</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,34,34)"></div><span>Red</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,136,0)"></div><span>Orange</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,221,0)"></div><span>Gold</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,255,51)"></div><span>Yellow</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,255,187)"></div><span>Light Yellow</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(34,102,34)"></div><span>Dark Green</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(68,170,51)"></div><span>Medium Green</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(85,204,68)"></div><span>Green</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(187,255,187)"></div><span>Light Green</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(0,136,136)"></div><span>Teal</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(0,85,85)"></div><span>Dark Teal</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(68,255,255)"></div><span>Cyan</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(0,0,136)"></div><span>Dark Blue</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(51,68,255)"></div><span>Blue</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(187,221,255)"></div><span>Light Blue</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(136,34,221)"></div><span>Purple</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(221,187,255)"></div><span>Light Purple</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(68,34,136)"></div><span>Dark Purple</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,68,255)"></div><span>Magenta</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,187,221)"></div><span>Pink</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,221,238)"></div><span>Light Pink</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(136,68,0)"></div><span>Brown</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(170,85,0)"></div><span>Dark Brown</span></div>
+                    <div class="legend-item"><div class="color-box" style="background: rgb(255,221,187)"></div><span>Peach</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
