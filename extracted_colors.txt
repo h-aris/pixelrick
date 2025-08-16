@@ -1,0 +1,33 @@
+Total colors found: 31
+
+Color 0: [0, 0, 0] - Black
+Color 1: [60, 60, 60] - Dark Gray
+Color 2: [120, 120, 120] - Gray
+Color 3: [210, 210, 210] - Light Gray
+Color 4: [255, 255, 255] - White
+Color 5: [96, 0, 24] - Deep Red
+Color 6: [237, 28, 36] - Red
+Color 7: [255, 127, 39] - Orange
+Color 8: [246, 170, 9] - Gold
+Color 9: [249, 221, 59] - Yellow
+Color 10: [255, 250, 188] - Light Yellow
+Color 11: [14, 185, 104] - Dark Green
+Color 12: [19, 230, 123] - Green
+Color 13: [135, 255, 94] - Light Green
+Color 14: [12, 129, 110] - Dark Teal
+Color 15: [16, 174, 166] - Teal
+Color 16: [19, 225, 190] - Light Teal
+Color 17: [40, 80, 158] - Dark Blue
+Color 18: [64, 147, 228] - Blue
+Color 19: [96, 247, 242] - Cyan
+Color 20: [107, 80, 246] - Indigo
+Color 21: [153, 177, 251] - Light Indigo
+Color 22: [120, 12, 153] - Dark Purple
+Color 23: [170, 56, 185] - Purple
+Color 24: [224, 159, 249] - Light Purple
+Color 25: [203, 0, 122] - Dark Pink
+Color 26: [236, 31, 128] - Pink
+Color 27: [243, 141, 169] - Light Pink
+Color 28: [104, 70, 52] - Dark Brown
+Color 29: [149, 104, 42] - Brown
+Color 30: [248, 178, 119] - Beige
