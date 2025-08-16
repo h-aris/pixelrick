@@ -14,6 +14,8 @@ class PixelGridViewer {
         this.scaleButton = document.getElementById('scaleButton');
         this.topPalette = document.getElementById('topPalette');
         this.bottomPalette = document.getElementById('bottomPalette');
+        this.topPaletteName = document.getElementById('topPaletteName');
+        this.bottomPaletteName = document.getElementById('bottomPaletteName');
         this.settingsToggle = document.getElementById('settingsToggle');
         this.settingsContent = document.getElementById('settingsContent');
         
@@ -63,6 +65,15 @@ class PixelGridViewer {
         this.countEndPixel = { x: -1, y: -1 };
         this.countPixels = [];
         this.isDragging = false;
+        this.isPanning = false;
+        this.lastPanX = 0;
+        this.lastPanY = 0;
+        this.panHasMoved = false;
+        this.backgroundType = 'checkered'; // Default background
+        
+        // Focus mode state
+        this.focusMode = 'off'; // 'off', 'vertical', 'horizontal', 'cross'
+        this.focusPixel = { x: -1, y: -1 }; // Currently focused pixel coordinates
         
         // RGB weighting values (default to human eye perception)
         this.rgbWeights = { r: 0.3, g: 0.59, b: 0.11 };
@@ -80,7 +91,8 @@ class PixelGridViewer {
         this.currentProjectData = null;
         this.isExactMode = false;
         
-        this.colorPalette = [
+        // Old color palette for backwards compatibility mapping
+        this.oldColorPalette = [
             [0, 0, 0],         // Black
             [68, 68, 68],      // Dark Gray
             [136, 136, 136],   // Gray
@@ -113,6 +125,49 @@ class PixelGridViewer {
             [255, 221, 187]    // Peach
         ];
         
+        this.colorPalette = [
+            [0, 0, 0],         // Black
+            [60, 60, 60],      // Dark Gray
+            [120, 120, 120],   // Gray
+            [210, 210, 210],   // Light Gray
+            [255, 255, 255],   // White
+            [96, 0, 24],       // Deep Red
+            [237, 28, 36],     // Red
+            [255, 127, 39],    // Orange
+            [246, 170, 9],     // Gold
+            [249, 221, 59],    // Yellow
+            [255, 250, 188],   // Light Yellow
+            [14, 185, 104],    // Dark Green
+            [19, 230, 123],    // Green
+            [135, 255, 94],    // Light Green
+            [12, 129, 110],    // Dark Teal
+            [16, 174, 166],    // Teal
+            [19, 225, 190],    // Light Teal
+            [40, 80, 158],     // Dark Blue
+            [64, 147, 228],    // Blue
+            [96, 247, 242],    // Cyan
+            [107, 80, 246],    // Indigo
+            [153, 177, 251],   // Light Indigo
+            [120, 12, 153],    // Dark Purple
+            [170, 56, 185],    // Purple
+            [224, 159, 249],   // Light Purple
+            [203, 0, 122],     // Dark Pink
+            [236, 31, 128],    // Pink
+            [243, 141, 169],   // Light Pink
+            [104, 70, 52],     // Dark Brown
+            [149, 104, 42],    // Brown
+            [248, 178, 119]    // Beige
+        ];
+        
+        this.colorNames = [
+            "Black", "Dark Gray", "Gray", "Light Gray", "White",
+            "Deep Red", "Red", "Orange", "Gold", "Yellow", "Light Yellow",
+            "Dark Green", "Green", "Light Green", "Dark Teal", "Teal", "Light Teal",
+            "Dark Blue", "Blue", "Cyan", "Indigo", "Light Indigo",
+            "Dark Purple", "Purple", "Light Purple", "Dark Pink", "Pink", "Light Pink",
+            "Dark Brown", "Brown", "Beige"
+        ];
+        
         this.initEventListeners();
         this.createPaletteTooltips();
     }
@@ -126,6 +181,25 @@ class PixelGridViewer {
         this.canvas.addEventListener('click', (e) => this.handleClick(e));
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
         this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault()); // Prevent context menu
+        this.canvas.addEventListener('wheel', (e) => this.handleMouseWheel(e));
+        this.canvasContainer.addEventListener('mousedown', (e) => this.handleContainerMouseDown(e));
+        this.canvasContainer.addEventListener('mousemove', (e) => this.handleContainerMouseMove(e));
+        this.canvasContainer.addEventListener('mouseup', (e) => this.handleContainerMouseUp(e));
+        this.canvasContainer.addEventListener('mouseleave', (e) => this.handleContainerMouseLeave(e));
+        
+        // Background option event listeners
+        this.bgOptionButtons = document.querySelectorAll('.bg-option');
+        this.bgOptionButtons.forEach(button => {
+            button.addEventListener('click', (e) => this.handleBackgroundChange(e.target.dataset.bg));
+        });
+        
+        // Focus mode event listeners
+        this.focusButtons = document.querySelectorAll('.focus-btn');
+        this.focusStatus = document.getElementById('focusStatus');
+        this.focusButtons.forEach(button => {
+            button.addEventListener('click', (e) => this.handleFocusChange(e.target.dataset.focus));
+        });
         
         this.scalePresetButtons.forEach(button => {
             button.addEventListener('click', (e) => this.handlePresetClick(e));
@@ -247,11 +321,33 @@ class PixelGridViewer {
         const data = imageData.data;
         const processed = new Uint8ClampedArray(data.length);
         
+        // Get background color for blending
+        const bgColor = this.getBackgroundColorForBlending();
+        
         for (let i = 0; i < data.length; i += 4) {
             let r = data[i];
             let g = data[i + 1];
             let b = data[i + 2];
             const alpha = data[i + 3];
+            
+            // Handle transparency
+            if (alpha === 0) {
+                // Fully transparent - keep as is, will be skipped in drawing
+                processed[i] = r;
+                processed[i + 1] = g;
+                processed[i + 2] = b;
+                processed[i + 3] = alpha;
+                continue;
+            } else if (alpha < 255) {
+                // Semi-transparent - blend with background
+                const alphaRatio = alpha / 255;
+                const invAlphaRatio = 1 - alphaRatio;
+                
+                r = Math.round(r * alphaRatio + bgColor[0] * invAlphaRatio);
+                g = Math.round(g * alphaRatio + bgColor[1] * invAlphaRatio);
+                b = Math.round(b * alphaRatio + bgColor[2] * invAlphaRatio);
+            }
+            // Fully opaque pixels (alpha === 255) use original colors
             
             // Apply brightness and contrast adjustments
             [r, g, b] = this.applyImageAdjustments(r, g, b);
@@ -261,7 +357,7 @@ class PixelGridViewer {
             processed[i] = quantizedColor[0];
             processed[i + 1] = quantizedColor[1];
             processed[i + 2] = quantizedColor[2];
-            processed[i + 3] = alpha;
+            processed[i + 3] = alpha < 255 ? 255 : alpha; // Semi-transparent becomes opaque after blending
         }
         
         return new ImageData(processed, imageData.width, imageData.height);
@@ -300,6 +396,34 @@ class PixelGridViewer {
         }
     }
     
+    handleMouseWheel(event) {
+        event.preventDefault(); // Prevent page scrolling
+        
+        if (!this.processedImageData) return;
+        
+        // Determine zoom direction
+        const delta = event.deltaY;
+        const zoomIn = delta < 0;
+        
+        // Get current zoom level
+        let newZoom = this.pixelSize;
+        
+        // Adjust zoom level
+        if (zoomIn) {
+            newZoom = Math.min(50, newZoom + 1); // Max zoom is 50
+        } else {
+            newZoom = Math.max(1, newZoom - 1); // Min zoom is 1
+        }
+        
+        // Only update if zoom level changed
+        if (newZoom !== this.pixelSize) {
+            this.pixelSize = newZoom;
+            this.zoomSlider.value = newZoom;
+            this.zoomValue.textContent = `${newZoom}x`;
+            this.drawPixelGrid();
+        }
+    }
+    
     toggleGridLines(checked) {
         this.showGridLines = checked;
         if (this.processedImageData) {
@@ -311,10 +435,22 @@ class PixelGridViewer {
         if (!this.processedImageData) return;
         
         const { width, height } = this.processedImageData;
-        this.canvas.width = width * this.pixelSize;
-        this.canvas.height = height * this.pixelSize;
         
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // Calculate larger canvas dimensions (50% larger)
+        const canvasWidth = Math.floor(width * 1.5) * this.pixelSize;
+        const canvasHeight = Math.floor(height * 1.5) * this.pixelSize;
+        
+        this.canvas.width = canvasWidth;
+        this.canvas.height = canvasHeight;
+        
+        this.ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        
+        // Draw checkered background
+        this.drawCheckeredBackground(canvasWidth, canvasHeight);
+        
+        // Calculate image offset to center it
+        const imageOffsetX = Math.floor((canvasWidth - (width * this.pixelSize)) / 2);
+        const imageOffsetY = Math.floor((canvasHeight - (height * this.pixelSize)) / 2);
         
         const data = this.processedImageData.data;
         
@@ -324,11 +460,17 @@ class PixelGridViewer {
                 const r = data[index];
                 const g = data[index + 1];
                 const b = data[index + 2];
+                const alpha = data[index + 3];
+                
+                // Skip fully transparent pixels - don't draw pixel or grid
+                if (alpha === 0) {
+                    continue;
+                }
                 
                 this.ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
                 this.ctx.fillRect(
-                    x * this.pixelSize,
-                    y * this.pixelSize,
+                    imageOffsetX + x * this.pixelSize,
+                    imageOffsetY + y * this.pixelSize,
                     this.pixelSize,
                     this.pixelSize
                 );
@@ -339,6 +481,7 @@ class PixelGridViewer {
                 const isSpecialPixel = isInCountSelection || isPinned || isHovered;
                 
                 // Only draw strokes if grid lines are on OR it's a special highlighted pixel
+                // Note: Only draw grid for opaque pixels (alpha > 0, which we already checked above)
                 if (this.showGridLines || isSpecialPixel) {
                     if (isInCountSelection) {
                         this.ctx.strokeStyle = '#ff6600';
@@ -354,13 +497,322 @@ class PixelGridViewer {
                         this.ctx.lineWidth = 1;
                     }
                     this.ctx.strokeRect(
-                        x * this.pixelSize,
-                        y * this.pixelSize,
+                        imageOffsetX + x * this.pixelSize,
+                        imageOffsetY + y * this.pixelSize,
                         this.pixelSize,
                         this.pixelSize
                     );
                 }
             }
+        }
+        
+        // Draw focus dimming overlay (affects everything except focused pixels)
+        this.drawFocusDimmingOverlay(imageOffsetX, imageOffsetY, width, height);
+        
+        // Draw focus glow
+        this.drawFocusGlow(imageOffsetX, imageOffsetY, width, height);
+    }
+    
+    drawFocusDimmingOverlay(imageOffsetX, imageOffsetY, width, height) {
+        if (this.focusMode === 'off' || this.focusPixel.x < 0) return;
+        
+        // Apply dimming only to non-focused areas
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; // 60% dimming
+        
+        const data = this.processedImageData.data;
+        
+        // Dim everything except viable pixels in focused row/column
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const index = (y * width + x) * 4;
+                const alpha = data[index + 3];
+                
+                // Check if this pixel is in the focused row/column
+                const isInFocusedColumn = (this.focusMode === 'vertical' || this.focusMode === 'cross') && x === this.focusPixel.x;
+                const isInFocusedRow = (this.focusMode === 'horizontal' || this.focusMode === 'cross') && y === this.focusPixel.y;
+                
+                // Skip dimming for viable pixels in focused areas
+                if ((isInFocusedColumn || isInFocusedRow) && alpha > 0) {
+                    continue;
+                }
+                
+                // Dim this pixel area
+                this.ctx.fillRect(
+                    imageOffsetX + x * this.pixelSize,
+                    imageOffsetY + y * this.pixelSize,
+                    this.pixelSize,
+                    this.pixelSize
+                );
+            }
+        }
+        
+        // Also dim areas outside the image bounds
+        const imageWidth = width * this.pixelSize;
+        const imageHeight = height * this.pixelSize;
+        
+        // Dim left area
+        if (imageOffsetX > 0) {
+            this.ctx.fillRect(0, 0, imageOffsetX, this.canvas.height);
+        }
+        // Dim right area
+        if (imageOffsetX + imageWidth < this.canvas.width) {
+            this.ctx.fillRect(imageOffsetX + imageWidth, 0, this.canvas.width - (imageOffsetX + imageWidth), this.canvas.height);
+        }
+        // Dim top area
+        if (imageOffsetY > 0) {
+            this.ctx.fillRect(0, 0, this.canvas.width, imageOffsetY);
+        }
+        // Dim bottom area
+        if (imageOffsetY + imageHeight < this.canvas.height) {
+            this.ctx.fillRect(0, imageOffsetY + imageHeight, this.canvas.width, this.canvas.height - (imageOffsetY + imageHeight));
+        }
+    }
+    
+    drawFocusGlow(imageOffsetX, imageOffsetY, width, height) {
+        if (this.focusMode === 'off' || this.focusPixel.x < 0) return;
+        
+        this.ctx.strokeStyle = 'rgba(147, 51, 234, 0.7)'; // Purple glow
+        this.ctx.lineWidth = 5; // Thicker border
+        this.ctx.setLineDash([]);
+        
+        const data = this.processedImageData.data;
+        
+        if (this.focusMode === 'vertical' || this.focusMode === 'cross') {
+            // Find segments of non-transparent pixels in the focused column
+            const segments = this.findPixelSegments('vertical', this.focusPixel.x, width, height, data);
+            segments.forEach(segment => {
+                const columnX = imageOffsetX + this.focusPixel.x * this.pixelSize;
+                const startY = imageOffsetY + segment.start * this.pixelSize;
+                const segmentHeight = (segment.end - segment.start + 1) * this.pixelSize;
+                
+                this.ctx.strokeRect(
+                    columnX - 2.5,
+                    startY - 2.5,
+                    this.pixelSize + 5,
+                    segmentHeight + 5
+                );
+            });
+        }
+        
+        if (this.focusMode === 'horizontal' || this.focusMode === 'cross') {
+            // Find segments of non-transparent pixels in the focused row
+            const segments = this.findPixelSegments('horizontal', this.focusPixel.y, width, height, data);
+            segments.forEach(segment => {
+                const rowY = imageOffsetY + this.focusPixel.y * this.pixelSize;
+                const startX = imageOffsetX + segment.start * this.pixelSize;
+                const segmentWidth = (segment.end - segment.start + 1) * this.pixelSize;
+                
+                this.ctx.strokeRect(
+                    startX - 2.5,
+                    rowY - 2.5,
+                    segmentWidth + 5,
+                    this.pixelSize + 5
+                );
+            });
+        }
+    }
+    
+    findPixelSegments(direction, lineIndex, width, height, data) {
+        const segments = [];
+        let currentSegment = null;
+        
+        if (direction === 'vertical') {
+            // Scan down the column at x = lineIndex
+            for (let y = 0; y < height; y++) {
+                const index = (y * width + lineIndex) * 4;
+                const alpha = data[index + 3];
+                
+                if (alpha > 0) { // Non-transparent pixel
+                    if (currentSegment === null) {
+                        currentSegment = { start: y, end: y };
+                    } else {
+                        currentSegment.end = y;
+                    }
+                } else { // Transparent pixel
+                    if (currentSegment !== null) {
+                        segments.push(currentSegment);
+                        currentSegment = null;
+                    }
+                }
+            }
+        } else if (direction === 'horizontal') {
+            // Scan across the row at y = lineIndex
+            for (let x = 0; x < width; x++) {
+                const index = (lineIndex * width + x) * 4;
+                const alpha = data[index + 3];
+                
+                if (alpha > 0) { // Non-transparent pixel
+                    if (currentSegment === null) {
+                        currentSegment = { start: x, end: x };
+                    } else {
+                        currentSegment.end = x;
+                    }
+                } else { // Transparent pixel
+                    if (currentSegment !== null) {
+                        segments.push(currentSegment);
+                        currentSegment = null;
+                    }
+                }
+            }
+        }
+        
+        // Don't forget the last segment if it reaches the end
+        if (currentSegment !== null) {
+            segments.push(currentSegment);
+        }
+        
+        return segments;
+    }
+    
+    drawCheckeredBackground(canvasWidth, canvasHeight) {
+        if (this.backgroundType === 'checkered') {
+            const checkerSize = this.pixelSize * 2; // 2x2 image pixels
+            const color1 = '#F8F4F0';
+            const color2 = '#E3F0D4';
+            
+            // Always draw checkered pattern at full opacity
+            for (let y = 0; y < canvasHeight; y += checkerSize) {
+                for (let x = 0; x < canvasWidth; x += checkerSize) {
+                    const isEvenRow = Math.floor(y / checkerSize) % 2 === 0;
+                    const isEvenCol = Math.floor(x / checkerSize) % 2 === 0;
+                    const useColor1 = isEvenRow === isEvenCol;
+                    
+                    this.ctx.fillStyle = useColor1 ? color1 : color2;
+                    this.ctx.fillRect(x, y, checkerSize, checkerSize);
+                }
+            }
+        } else {
+            // Solid color backgrounds
+            let bgColor;
+            switch (this.backgroundType) {
+                case 'light':
+                    bgColor = '#F8F4F0';
+                    break;
+                case 'green':
+                    bgColor = '#E3F0D4';
+                    break;
+                case 'blue':
+                    bgColor = '#9EBDFF';
+                    break;
+                case 'dark':
+                    bgColor = '#161B22';
+                    break;
+                default:
+                    bgColor = '#F8F4F0';
+            }
+            
+            this.ctx.fillStyle = bgColor;
+            this.ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        }
+    }
+    
+    isPixelInFocus(canvasX, canvasY) {
+        if (this.focusMode === 'off' || this.focusPixel.x < 0 || !this.processedImageData) return true;
+        
+        const offset = this.getImageOffset();
+        const { width, height } = this.processedImageData;
+        
+        // Convert canvas coordinates to image pixel coordinates
+        const imageStartX = offset.x;
+        const imageStartY = offset.y;
+        const imageEndX = offset.x + width * this.pixelSize;
+        const imageEndY = offset.y + height * this.pixelSize;
+        
+        // Check if we're outside the image area
+        if (canvasX < imageStartX || canvasX >= imageEndX || canvasY < imageStartY || canvasY >= imageEndY) {
+            return false; // Background areas outside image are not in focus
+        }
+        
+        // Calculate which image pixel this canvas coordinate belongs to
+        const imagePixelX = Math.floor((canvasX - offset.x) / this.pixelSize);
+        const imagePixelY = Math.floor((canvasY - offset.y) / this.pixelSize);
+        
+        // Determine if this pixel is in the focused row/column
+        switch (this.focusMode) {
+            case 'vertical':
+                return imagePixelX === this.focusPixel.x;
+            case 'horizontal':
+                return imagePixelY === this.focusPixel.y;
+            case 'cross':
+                return imagePixelX === this.focusPixel.x || imagePixelY === this.focusPixel.y;
+            default:
+                return true;
+        }
+    }
+    
+    getImageOffset() {
+        if (!this.processedImageData) return { x: 0, y: 0 };
+        
+        const { width, height } = this.processedImageData;
+        const canvasWidth = Math.floor(width * 1.5) * this.pixelSize;
+        const canvasHeight = Math.floor(height * 1.5) * this.pixelSize;
+        const imageOffsetX = Math.floor((canvasWidth - (width * this.pixelSize)) / 2);
+        const imageOffsetY = Math.floor((canvasHeight - (height * this.pixelSize)) / 2);
+        
+        return { x: imageOffsetX, y: imageOffsetY };
+    }
+    
+    getBackgroundColorForBlending() {
+        // Return RGB color for blending semi-transparent pixels
+        switch (this.backgroundType) {
+            case 'checkered':
+                return [248, 244, 240]; // Use light cream for checkered
+            case 'light':
+                return [248, 244, 240]; // #F8F4F0
+            case 'green':
+                return [227, 240, 212]; // #E3F0D4
+            case 'blue':
+                return [158, 189, 255]; // #9EBDFF
+            case 'dark':
+                return [22, 27, 34];    // #161B22
+            default:
+                return [248, 244, 240]; // Default to light cream
+        }
+    }
+    
+    handleBackgroundChange(bgType) {
+        this.backgroundType = bgType;
+        
+        // Update active state
+        this.bgOptionButtons.forEach(btn => btn.classList.remove('active'));
+        document.querySelector(`[data-bg="${bgType}"]`).classList.add('active');
+        
+        // Reprocess image to blend semi-transparent pixels with new background
+        if (this.scaledImage && !this.isExactMode) {
+            this.processImage();
+            this.drawPixelGrid();
+        } else if (this.processedImageData) {
+            // In exact mode or no scaled image, just redraw
+            this.drawPixelGrid();
+        }
+    }
+    
+    handleFocusChange(focusType) {
+        this.focusMode = focusType;
+        
+        // Update active state
+        this.focusButtons.forEach(btn => btn.classList.remove('active'));
+        document.querySelector(`[data-focus="${focusType}"]`).classList.add('active');
+        
+        // Update status text
+        const statusText = {
+            'off': 'Focus: Off',
+            'vertical': 'Focus: Column',
+            'horizontal': 'Focus: Row',
+            'cross': 'Focus: Cross'
+        };
+        this.focusStatus.textContent = statusText[focusType];
+        
+        // If changing focus type while pixel is pinned, update focus coordinates
+        if (this.pinnedPixel.x >= 0 && focusType !== 'off') {
+            this.focusPixel = { x: this.pinnedPixel.x, y: this.pinnedPixel.y };
+        } else if (focusType === 'off') {
+            this.focusPixel = { x: -1, y: -1 };
+        }
+        
+        // Redraw to apply focus effects
+        if (this.processedImageData) {
+            this.drawPixelGrid();
         }
     }
     
@@ -371,11 +823,28 @@ class PixelGridViewer {
         const mouseX = event.clientX - rect.left;
         const mouseY = event.clientY - rect.top;
         
-        const pixelX = Math.floor(mouseX / this.pixelSize);
-        const pixelY = Math.floor(mouseY / this.pixelSize);
+        // Calculate image offset and adjust mouse coordinates
+        const offset = this.getImageOffset();
+        const adjustedX = mouseX - offset.x;
+        const adjustedY = mouseY - offset.y;
+        
+        const pixelX = Math.floor(adjustedX / this.pixelSize);
+        const pixelY = Math.floor(adjustedY / this.pixelSize);
         
         if (pixelX >= 0 && pixelX < this.processedImageData.width && 
             pixelY >= 0 && pixelY < this.processedImageData.height) {
+            
+            // Check if pixel is transparent - if so, treat as if outside image bounds
+            const index = (pixelY * this.processedImageData.width + pixelX) * 4;
+            const alpha = this.processedImageData.data[index + 3];
+            if (alpha === 0) {
+                if (!this.countMode) {
+                    this.hoveredPixel = { x: -1, y: -1 };
+                    this.drawPixelGrid();
+                    this.updateTooltipDisplay();
+                }
+                return;
+            }
             
             if (this.isDragging) {
                 this.countEndPixel = { x: pixelX, y: pixelY };
@@ -414,20 +883,39 @@ class PixelGridViewer {
             return;
         }
         
+        // Prevent click after actual panning movement
+        if (this.panHasMoved) {
+            this.panHasMoved = false;
+            return;
+        }
+        
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
         const mouseY = event.clientY - rect.top;
         
-        const pixelX = Math.floor(mouseX / this.pixelSize);
-        const pixelY = Math.floor(mouseY / this.pixelSize);
+        // Calculate image offset and adjust mouse coordinates
+        const offset = this.getImageOffset();
+        const adjustedX = mouseX - offset.x;
+        const adjustedY = mouseY - offset.y;
+        
+        const pixelX = Math.floor(adjustedX / this.pixelSize);
+        const pixelY = Math.floor(adjustedY / this.pixelSize);
         
         if (pixelX >= 0 && pixelX < this.processedImageData.width && 
             pixelY >= 0 && pixelY < this.processedImageData.height) {
+            
+            // Check if pixel is transparent - if so, don't allow interaction
+            const checkIndex = (pixelY * this.processedImageData.width + pixelX) * 4;
+            const checkAlpha = this.processedImageData.data[checkIndex + 3];
+            if (checkAlpha === 0) {
+                return;
+            }
             
             // Check if clicking the same pixel that's already pinned
             if (this.pinnedPixel.x === pixelX && this.pinnedPixel.y === pixelY) {
                 // Unpin the pixel
                 this.pinnedPixel = { x: -1, y: -1, color: [0, 0, 0] };
+                this.focusPixel = { x: -1, y: -1 }; // Clear focus when unpinning
                 this.updatePaletteHighlight(null);
             } else {
                 // Pin new pixel and store current tooltip position
@@ -439,6 +927,12 @@ class PixelGridViewer {
                 this.pinnedPixel = { x: pixelX, y: pixelY, color: [r, g, b] };
                 // Store the tooltip position where it was clicked (with 25px offset)
                 this.pinnedTooltipPos = { x: event.pageX + 25, y: event.pageY + 25 };
+                
+                // Update focus if in focus mode
+                if (this.focusMode !== 'off') {
+                    this.focusPixel = { x: pixelX, y: pixelY };
+                }
+                
                 this.updatePaletteHighlight([r, g, b]);
             }
             
@@ -448,22 +942,37 @@ class PixelGridViewer {
     }
     
     handleMouseDown(event) {
-        if (!this.processedImageData) return;
-        
-        const rect = this.canvas.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
-        
-        const pixelX = Math.floor(mouseX / this.pixelSize);
-        const pixelY = Math.floor(mouseY / this.pixelSize);
-        
-        if (pixelX >= 0 && pixelX < this.processedImageData.width && 
-            pixelY >= 0 && pixelY < this.processedImageData.height) {
+        if (event.button === 2) { // Right click
+            if (!this.processedImageData) return;
             
-            this.isDragging = true;
-            this.countStartPixel = { x: pixelX, y: pixelY };
-            this.countEndPixel = { x: pixelX, y: pixelY };
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+            
+            // Calculate image offset and adjust mouse coordinates
+            const offset = this.getImageOffset();
+            const adjustedX = mouseX - offset.x;
+            const adjustedY = mouseY - offset.y;
+            
+            const pixelX = Math.floor(adjustedX / this.pixelSize);
+            const pixelY = Math.floor(adjustedY / this.pixelSize);
+            
+            if (pixelX >= 0 && pixelX < this.processedImageData.width && 
+                pixelY >= 0 && pixelY < this.processedImageData.height) {
+                
+                // Check if pixel is transparent - if so, don't allow drag counting
+                const checkIndex = (pixelY * this.processedImageData.width + pixelX) * 4;
+                const checkAlpha = this.processedImageData.data[checkIndex + 3];
+                if (checkAlpha === 0) {
+                    return;
+                }
+                
+                this.isDragging = true;
+                this.countStartPixel = { x: pixelX, y: pixelY };
+                this.countEndPixel = { x: pixelX, y: pixelY };
+            }
         }
+        // Left click is handled by container events for panning
     }
     
     handleMouseUp(event) {
@@ -475,6 +984,51 @@ class PixelGridViewer {
             } else {
                 this.exitCountMode();
             }
+        }
+    }
+    
+    handleContainerMouseDown(event) {
+        if (event.button === 0) { // Left click only
+            this.isPanning = true;
+            this.lastPanX = event.clientX;
+            this.lastPanY = event.clientY;
+            this.panHasMoved = false;
+            this.canvasContainer.style.cursor = 'grabbing';
+            event.preventDefault();
+        }
+    }
+    
+    handleContainerMouseMove(event) {
+        if (this.isPanning) {
+            const deltaX = this.lastPanX - event.clientX;
+            const deltaY = this.lastPanY - event.clientY;
+            
+            // Only set panHasMoved if there was actual movement
+            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+                this.panHasMoved = true;
+            }
+            
+            this.canvasContainer.scrollLeft += deltaX;
+            this.canvasContainer.scrollTop += deltaY;
+            
+            this.lastPanX = event.clientX;
+            this.lastPanY = event.clientY;
+        }
+    }
+    
+    handleContainerMouseUp(event) {
+        if (this.isPanning) {
+            this.isPanning = false;
+            this.canvasContainer.style.cursor = 'default';
+            // panHasMoved flag will be checked and cleared in handleClick
+        }
+    }
+    
+    handleContainerMouseLeave(event) {
+        if (this.isPanning) {
+            this.isPanning = false;
+            this.canvasContainer.style.cursor = 'default';
+            this.panHasMoved = false; // Reset since we're leaving
         }
     }
     
@@ -570,10 +1124,13 @@ class PixelGridViewer {
     
     showTooltip(mouseX, mouseY, pixelX, pixelY, color) {
         const [r, g, b] = color;
+        const matchingIndex = this.findMatchingColorIndex(color);
+        const colorName = matchingIndex !== -1 ? this.colorNames[matchingIndex] : 'Unknown';
         
         this.tooltip.innerHTML = `
             <div>Position: (${pixelX}, ${pixelY})</div>
             <div>Color: rgb(${r}, ${g}, ${b})</div>
+            <div>Name: ${colorName}</div>
             <div style="background: rgb(${r}, ${g}, ${b}); width: 25px; height: 25px; border: 1px solid #000; display: inline-block; margin-top: 8px;"></div>
         `;
         
@@ -679,7 +1236,18 @@ class PixelGridViewer {
                 
                 if (topColor) topColor.classList.add('active');
                 if (bottomColor) bottomColor.classList.add('active');
+                
+                // Show color name in both palette name displays
+                const colorName = this.colorNames[matchingIndex];
+                this.topPaletteName.textContent = colorName;
+                this.topPaletteName.style.display = 'block';
+                this.bottomPaletteName.textContent = colorName;
+                this.bottomPaletteName.style.display = 'block';
             }
+        } else {
+            // Hide color names when no color is highlighted
+            this.topPaletteName.style.display = 'none';
+            this.bottomPaletteName.style.display = 'none';
         }
     }
     
@@ -693,6 +1261,51 @@ class PixelGridViewer {
             }
         }
         return -1;
+    }
+    
+    findOldColorIndex(color) {
+        for (let i = 0; i < this.oldColorPalette.length; i++) {
+            const paletteColor = this.oldColorPalette[i];
+            if (paletteColor[0] === color[0] && 
+                paletteColor[1] === color[1] && 
+                paletteColor[2] === color[2]) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    
+    mapOldColorsToNew(imageData) {
+        const newImageData = new ImageData(imageData.width, imageData.height);
+        const data = imageData.data;
+        const newData = newImageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const a = data[i + 3];
+            
+            // Find which old color index this pixel represents
+            const oldColorIndex = this.findOldColorIndex([r, g, b]);
+            
+            if (oldColorIndex >= 0 && oldColorIndex < this.colorPalette.length) {
+                // Map to new color at same index
+                const newColor = this.colorPalette[oldColorIndex];
+                newData[i] = newColor[0];       // R
+                newData[i + 1] = newColor[1];   // G
+                newData[i + 2] = newColor[2];   // B
+                newData[i + 3] = a;             // A (preserve alpha)
+            } else {
+                // If no match found, keep original color
+                newData[i] = r;
+                newData[i + 1] = g;
+                newData[i + 2] = b;
+                newData[i + 3] = a;
+            }
+        }
+        
+        return newImageData;
     }
     
     updateImageInfo() {
@@ -1085,7 +1698,7 @@ class PixelGridViewer {
         
         // Create project data
         const projectData = {
-            version: "1.0",
+            version: "2.0",
             settings: {
                 rgbWeights: { ...this.rgbWeights },
                 brightness: this.brightness,
@@ -1093,7 +1706,8 @@ class PixelGridViewer {
                 doCleanupIsolated: this.doCleanupIsolated,
                 edgeEnhancement: this.edgeEnhancement,
                 scaleSize: Math.max(this.scaledImage.width, this.scaledImage.height),
-                pixelSize: this.pixelSize
+                pixelSize: this.pixelSize,
+                backgroundType: this.backgroundType
             },
             originalImage: originalImageData,
             processedGrid: processedGridData,
@@ -1186,9 +1800,12 @@ class PixelGridViewer {
             canvas.width = img.width;
             canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
-            this.processedImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const loadedImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             
-            // Draw the exact grid
+            // Map old colors to new colors for backwards compatibility
+            this.processedImageData = this.mapOldColorsToNew(loadedImageData);
+            
+            // Draw the exact grid with new colors
             this.drawPixelGrid();
             
             // Update UI
@@ -1221,30 +1838,41 @@ class PixelGridViewer {
             this.doCleanupIsolated = settings.doCleanupIsolated;
             this.edgeEnhancement = settings.edgeEnhancement;
             this.pixelSize = settings.pixelSize || 20;
+            this.backgroundType = settings.backgroundType || 'checkered';
             
             // Update UI controls
             this.updateControlsFromSettings();
             
+            // Update background button state
+            this.bgOptionButtons.forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-bg="${this.backgroundType}"]`)?.classList.add('active');
+            
             // Scale and process the image
             if (settings.scaleSize && settings.scaleSize !== Math.max(img.width, img.height)) {
-                this.scaledImage = this.scaleImage(img, settings.scaleSize);
+                this.scaleImage(img, settings.scaleSize, (scaledImg) => {
+                    this.scaledImage = scaledImg;
+                    this.finishEditModeSetup();
+                });
             } else {
                 this.scaledImage = img;
+                this.finishEditModeSetup();
             }
-            
-            this.processImage();
-            this.updateImageInfo();
-            this.drawPixelGrid();
-            
-            // Update UI
-            this.showModeIndicator(false);
-            this.disableControls(false);
-            
-            // Enable buttons
-            this.saveProjectButton.disabled = false;
-            this.exportGridButton.disabled = false;
         };
         img.src = this.currentProjectData.originalImage;
+    }
+    
+    finishEditModeSetup() {
+        this.processImage();
+        this.updateImageInfo();
+        this.drawPixelGrid();
+        
+        // Update UI
+        this.showModeIndicator(false);
+        this.disableControls(false);
+        
+        // Enable buttons
+        this.saveProjectButton.disabled = false;
+        this.exportGridButton.disabled = false;
     }
     
     updateControlsFromSettings() {

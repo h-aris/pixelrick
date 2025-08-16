@@ -33,15 +33,6 @@
                 <input type="number" id="customScale" min="8" max="1024" value="128" />
                 <button id="scaleButton">Scale</button>
             </div>
-            <div class="zoom-controls">
-                <label for="zoomSlider">Zoom:</label>
-                <input type="range" id="zoomSlider" min="1" max="50" value="5" />
-                <span id="zoomValue">5x</span>
-                <label for="showGridLines" style="margin-left: 15px;">
-                    <input type="checkbox" id="showGridLines" checked>
-                    Grid Lines
-                </label>
-            </div>
         </div>
         
         <div id="modeIndicator" class="mode-indicator" style="display: none;">
@@ -52,7 +43,36 @@
             </div>
         </div>
         
-        <div class="palette-tooltip" id="topPalette"></div>
+        <div class="focus-controls">
+            <span class="focus-status" id="focusStatus">Focus: Off</span>
+            <div class="focus-button-group">
+                <button class="focus-btn active" data-focus="off" title="No Focus">○</button>
+                <button class="focus-btn" data-focus="vertical" title="Focus Column">│</button>
+                <button class="focus-btn" data-focus="horizontal" title="Focus Row">─</button>
+                <button class="focus-btn" data-focus="cross" title="Focus Cross">┼</button>
+            </div>
+            <div class="background-controls">
+                <label>Background:</label>
+                <button class="bg-option active" data-bg="checkered" title="Checkered Pattern">⬜</button>
+                <button class="bg-option" data-bg="light" title="Light Background" style="background: #F8F4F0;"></button>
+                <button class="bg-option" data-bg="green" title="Green Background" style="background: #E3F0D4;"></button>
+                <button class="bg-option" data-bg="blue" title="Blue Background" style="background: #9EBDFF;"></button>
+                <button class="bg-option" data-bg="dark" title="Dark Background" style="background: #161B22;"></button>
+            </div>
+            <label for="showGridLines">
+                <input type="checkbox" id="showGridLines" checked>
+                Grid Lines
+            </label>
+            <div class="zoom-controls">
+                <label for="zoomSlider">Zoom:</label>
+                <input type="range" id="zoomSlider" min="1" max="50" value="5" />
+                <span id="zoomValue">5x</span>
+            </div>
+        </div>
+        
+        <div class="palette-tooltip" id="topPalette">
+            <div class="palette-name" id="topPaletteName"></div>
+        </div>
         
         <div class="canvas-container">
             <canvas id="canvas"></canvas>
@@ -60,7 +80,9 @@
         
         <div id="tooltip" class="tooltip"></div>
         
-        <div class="palette-tooltip" id="bottomPalette"></div>
+        <div class="palette-tooltip" id="bottomPalette">
+            <div class="palette-name" id="bottomPaletteName"></div>
+        </div>
         
         <div class="advanced-settings">
             <div class="settings-header" id="settingsToggle">
@@ -137,7 +159,7 @@
         <div class="info">
             <div id="imageInfo" class="image-info"></div>
             <div class="color-legend">
-                <h3>Color Palette (29 Colors)</h3>
+                <h3>Color Palette (31 Colors)</h3>
                 <div class="legend-grid">
                     <div class="legend-item"><div class="color-box" style="background: rgb(0,0,0)"></div><span>Black</span></div>
                     <div class="legend-item"><div class="color-box" style="background: rgb(68,68,68)"></div><span>Dark Gray</span></div>
