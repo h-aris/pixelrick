@@ -13,7 +13,6 @@
     <div class="container">
         <header>
             <h1>Pixel Rick</h1>
-            <p>Upload a PNG, JPG, or JPEG image to view its color palette pixel grid</p>
         </header>
         
         <div class="controls">
@@ -32,6 +31,7 @@
                 <button class="scale-preset" data-size="256">256px</button>
                 <input type="number" id="customScale" min="8" max="1024" value="128" />
                 <button id="scaleButton">Scale</button>
+                <span id="finalDimensions" style="color: #58a6ff; font-weight: 500; margin-left: 10px; font-size: 14px;"></span>
             </div>
         </div>
         
@@ -65,7 +65,7 @@
             </label>
             <div class="zoom-controls">
                 <label for="zoomSlider">Zoom:</label>
-                <input type="range" id="zoomSlider" min="1" max="50" value="5" />
+                <input type="range" id="zoomSlider" min="0" max="100" value="41" />
                 <span id="zoomValue">5x</span>
             </div>
         </div>
@@ -80,6 +80,24 @@
         
         <div id="tooltip" class="tooltip"></div>
         
+        <!-- Coordinate Reference Modal -->
+        <div id="coordinateModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h3>Set Coordinate Reference</h3>
+                <p>Selected pixel: <span id="selectedPixelCoords"></span></p>
+                <div class="modal-inputs">
+                    <label>World X coordinate:</label>
+                    <input type="number" id="worldXInput" step="0.1">
+                    <label>World Y coordinate:</label>
+                    <input type="number" id="worldYInput" step="0.1">
+                </div>
+                <div class="modal-buttons">
+                    <button id="confirmCoordinates" class="modal-btn primary">Set Reference</button>
+                    <button id="cancelCoordinates" class="modal-btn">Cancel</button>
+                </div>
+            </div>
+        </div>
+        
         <div class="palette-tooltip" id="bottomPalette">
             <div class="palette-name" id="bottomPaletteName"></div>
         </div>
@@ -89,6 +107,8 @@
                 <h3>Advanced Settings <span class="toggle-icon">▼</span></h3>
             </div>
             <div class="settings-content" id="settingsContent">
+                
+                <div class="settings-grid">
                 
                 <div class="setting-section">
                     <h4>Color Weighting</h4>
@@ -126,10 +146,27 @@
                         <input type="range" id="contrastSlider" min="0.5" max="2.0" step="0.1" value="1.0">
                         <span id="contrastValue">1.0</span>
                     </div>
+                    <div class="setting-row">
+                        <label>Saturation:</label>
+                        <input type="range" id="saturationSlider" min="0" max="200" step="5" value="100">
+                        <span id="saturationValue">100%</span>
+                    </div>
                     <div class="preset-buttons">
                         <button class="preset-btn" data-adjustment="reset">Reset</button>
                         <button class="preset-btn" data-adjustment="bright">Brighten</button>
                         <button class="preset-btn" data-adjustment="high-contrast">High Contrast</button>
+                    </div>
+                </div>
+                
+                <div class="setting-section">
+                    <h4>Background Integration</h4>
+                    <div class="setting-row">
+                        <label>Background Preference:</label>
+                        <input type="range" id="bgIntegrationSlider" min="0" max="1.5" step="0.05" value="1.0" />
+                        <span id="bgIntegrationValue">1.0x</span>
+                    </div>
+                    <div class="setting-description">
+                        <small>0 = No background matching, 1 = Normal, 1.5 = Maximum preference (only applies to cream/green/blue backgrounds)</small>
                     </div>
                 </div>
                 
@@ -153,12 +190,95 @@
                     </div>
                 </div>
                 
+                <div class="setting-section">
+                    <h4>Blur & Motion Effects</h4>
+                    <div class="setting-row">
+                        <label>Gaussian Blur:</label>
+                        <input type="range" id="gaussianBlurSlider" min="0" max="7.5" step="0.1" value="0" />
+                        <span id="gaussianBlurValue">0%</span>
+                    </div>
+                    <div class="setting-row">
+                        <label>Motion Blur:</label>
+                        <input type="range" id="motionBlurSlider" min="0" max="15" step="0.2" value="0" />
+                        <span id="motionBlurValue">0%</span>
+                    </div>
+                    <div class="setting-row">
+                        <label>Rotational Blur:</label>
+                        <input type="range" id="radialBlurSlider" min="0" max="7.5" step="0.1" value="0" />
+                        <span id="radialBlurValue">0%</span>
+                    </div>
+                    <div class="setting-row">
+                        <label>Resize Handling:</label>
+                        <div class="resize-button-group">
+                            <button class="resize-btn active" data-resize="crop" title="Use original dimensions, ignore expansion">Crop</button>
+                            <button class="resize-btn" data-resize="fit" title="Scale expanded image to fit target size">Fit</button>
+                            <button class="resize-btn" data-resize="expand" title="Preserve original proportions, expand target size">Expand</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="setting-section">
+                    <h4>Dithering</h4>
+                    <div class="setting-row">
+                        <label>Dithering Type:</label>
+                        <div class="dithering-button-group">
+                            <button class="dithering-btn active" data-dithering="none" title="No dithering">None</button>
+                            <button class="dithering-btn" data-dithering="bayer2x2" title="2x2 Bayer matrix - subtle pattern">2×2</button>
+                            <button class="dithering-btn" data-dithering="bayer4x4" title="4x4 Bayer matrix - medium pattern">4×4</button>
+                            <button class="dithering-btn" data-dithering="bayer8x8" title="8x8 Bayer matrix - fine pattern">8×8</button>
+                            <button class="dithering-btn" data-dithering="floyd" title="Floyd-Steinberg error diffusion">Floyd</button>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>Dithering Intensity:</label>
+                        <input type="range" id="ditheringIntensity" min="0" max="100" step="5" value="50" />
+                        <span id="ditheringValue">50%</span>
+                    </div>
+                    <div class="setting-description">
+                        <small>Dithering helps smooth color transitions in the limited palette. Higher intensity creates more pronounced patterns.</small>
+                    </div>
+                </div>
+                
+                <div class="setting-section">
+                    <h4>JPEG Compression</h4>
+                    <div class="setting-row">
+                        <label>Compression Amount:</label>
+                        <input type="range" id="jpegCompressionSlider" min="0" max="100" step="1" value="0" />
+                        <span id="jpegCompressionValue">0%</span>
+                    </div>
+                    <div class="setting-row">
+                        <label>Compression Passes:</label>
+                        <input type="range" id="jpegPassesSlider" min="1" max="5" step="1" value="1" />
+                        <span id="jpegPassesValue">1</span>
+                    </div>
+                    <div class="preset-buttons">
+                        <button class="preset-btn" data-jpeg="none">No Compression</button>
+                        <button class="preset-btn" data-jpeg="light">Light</button>
+                        <button class="preset-btn" data-jpeg="medium">Medium</button>
+                        <button class="preset-btn" data-jpeg="heavy">Heavy</button>
+                        <button class="preset-btn" data-jpeg="deepfry">Deep-Fry</button>
+                    </div>
+                    <div class="setting-description">
+                        <small>JPEG compression adds artifacts for a "deep-fried" aesthetic. Higher compression and more passes create more pronounced effects.</small>
+                    </div>
+                </div>
+                
+                </div> <!-- End settings-grid -->
+                
             </div>
         </div>
         
         <div class="info">
             <div id="imageInfo" class="image-info"></div>
-            <div class="color-legend">
+            <div class="debug-controls">
+                <h3>Developer Tools</h3>
+                <div class="debug-button-group">
+                    <button id="toggleDebugPanel" class="debug-btn">Show Debug Panel</button>
+                    <button id="setCoordinateRef" class="debug-btn coord-btn">Set Coordinate Reference</button>
+                    <button id="toggleCornerMarkers" class="debug-btn coord-btn">Corner Markers</button>
+                </div>
+            </div>
+            <div class="color-legend" style="display: none;">
                 <h3>Color Palette (31 Colors)</h3>
                 <div class="legend-grid">
                     <div class="legend-item"><div class="color-box" style="background: rgb(0,0,0)"></div><span>Black</span></div>
